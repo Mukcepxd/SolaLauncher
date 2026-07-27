@@ -1,0 +1,1368 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>SolaLauncher</title>
+<style>
+  :root{
+    --pink: #ff2d78;
+    --pink-soft: #ff6ec7;
+    --violet: #8a1f5c;
+    --panel-bg: rgba(12, 8, 12, 0.72);
+    --mx: 50%;
+    --my: 50%;
+  }
+
+  *{ box-sizing: border-box; }
+  html,body{
+    margin:0; padding:0; height:100%; width:100%;
+    overflow:hidden;
+    font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+    color:#f1f1f1;
+    user-select:none;
+  }
+
+  body{
+    position:relative;
+    background:
+      radial-gradient(circle at var(--mx) var(--my), color-mix(in srgb, var(--pink) 35%, transparent) 0%, color-mix(in srgb, var(--violet) 18%, transparent) 28%, transparent 60%),
+      radial-gradient(circle at 15% 85%, color-mix(in srgb, var(--pink-soft) 12%, transparent) 0%, transparent 45%),
+      #060306;
+    transition: background 0.15s ease-out;
+  }
+
+  /* soft ambient blobs, drift slowly on their own */
+  .blob{
+    position:absolute;
+    border-radius:50%;
+    filter: blur(100px);
+    opacity:0.4;
+    pointer-events:none;
+    animation: float 16s ease-in-out infinite;
+  }
+  .blob.b1{ width:520px; height:520px; background: var(--pink); top:-140px; left:-100px; }
+  .blob.b2{ width:460px; height:460px; background: var(--violet); bottom:-160px; right:-120px; animation-delay:4s; }
+  .blob.b3{ width:340px; height:340px; background: var(--pink-soft); bottom:8%; left:35%; opacity:0.18; animation-delay:8s; }
+
+  @keyframes float{
+    0%,100%{ transform: translate(0,0) scale(1); }
+    50%{ transform: translate(24px,-30px) scale(1.06); }
+  }
+
+  canvas#fx{
+    position:absolute; inset:0; width:100%; height:100%;
+    pointer-events:none;
+    z-index:5;
+  }
+
+  .noise{
+    position:absolute; inset:0;
+    background-image: repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
+    pointer-events:none;
+    z-index:2;
+  }
+
+  /* custom titlebar (frame:false window) */
+  .titlebar{
+    position:relative;
+    z-index:20;
+    -webkit-app-region: drag;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    padding:10px 14px;
+    height:36px;
+  }
+  .titlebar .side{
+    display:flex;
+    gap:8px;
+  }
+  .titlebar button{
+    -webkit-app-region: no-drag;
+    width:28px; height:28px;
+    border:none;
+    border-radius:6px;
+    background: rgba(255,255,255,0.06);
+    color:#e8e8ee;
+    cursor:pointer;
+    font-size:13px;
+    line-height:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .titlebar button:hover{ background: rgba(255,255,255,0.14); }
+  .titlebar button.close:hover{ background: rgba(255,45,120,0.5); }
+  .titlebar button svg{ width:15px; height:15px; fill:currentColor; }
+
+  .wrap{
+    position:relative;
+    z-index:10;
+    height:calc(100% - 36px);
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    padding:10px 48px 36px;
+  }
+
+  header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+
+  .logo{
+    display:flex;
+    align-items:center;
+    gap:14px;
+  }
+  .logo-cube{
+    width:38px; height:38px;
+    background: linear-gradient(135deg, var(--pink), var(--violet));
+    border-radius:6px;
+    box-shadow: 0 0 18px rgba(255,45,120,0.55), inset 0 0 0 2px rgba(255,255,255,0.15);
+    transform: rotate(8deg);
+    cursor:pointer;
+    transition: box-shadow .2s ease;
+  }
+  .logo-cube:hover{ box-shadow: 0 0 26px rgba(255,45,120,0.8), inset 0 0 0 2px rgba(255,255,255,0.25); }
+  .logo-cube.spin{
+    animation: cubeSpin 0.7s cubic-bezier(.2,.9,.3,1.2);
+  }
+  @keyframes cubeSpin{
+    0%{ transform: rotate(8deg) scale(1); }
+    40%{ transform: rotate(280deg) scale(1.15); }
+    100%{ transform: rotate(368deg) scale(1); }
+  }
+
+  /* settings modal */
+  .modal-overlay{
+    position:absolute; inset:0;
+    z-index:50;
+    background: rgba(4,2,4,0.6);
+    backdrop-filter: blur(4px);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .modal-overlay.hidden{ display:none; }
+  .modal{
+    width:360px;
+    background: rgba(18,10,16,0.92);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:16px;
+    padding:22px 24px;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+  }
+  .modal h2{
+    margin:0 0 18px;
+    font-size:16px;
+    letter-spacing:0.5px;
+  }
+  .modal .field{ margin-bottom:16px; }
+  .modal .field label{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:#a89aa2;
+    display:block;
+    margin-bottom:6px;
+  }
+  .modal select{
+    width:100%;
+    background: rgba(0,0,0,0.4);
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:8px;
+    padding:10px 12px;
+    color:#fff;
+    font-size:14px;
+  }
+
+  .ram-slider-row{
+    display:flex;
+    align-items:center;
+    gap:14px;
+  }
+  .ram-value{
+    min-width:56px;
+    text-align:right;
+    font-size:15px;
+    font-weight:600;
+    font-variant-numeric: tabular-nums;
+    transition: color .2s ease;
+  }
+  @property --fill{
+    syntax: '<percentage>';
+    inherits: true;
+    initial-value: 50%;
+  }
+
+  .ram-slider{
+    flex:1;
+    -webkit-appearance:none;
+    appearance:none;
+    height:3px;
+    border-radius:999px;
+    outline:none;
+    cursor:pointer;
+    background: linear-gradient(90deg, var(--pink) 0%, var(--pink) var(--fill,50%), rgba(255,255,255,0.12) var(--fill,50%), rgba(255,255,255,0.12) 100%);
+  }
+  .ram-slider::-webkit-slider-thumb{
+    -webkit-appearance:none;
+    width:12px; height:12px;
+    border-radius:50%;
+    background: #fff;
+    margin-top:0;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--pink) 55%, transparent), 0 4px 10px rgba(0,0,0,0.45);
+    cursor:pointer;
+    transition: transform .15s cubic-bezier(.34,1.6,.6,1), box-shadow .15s ease;
+  }
+  .ram-slider:active::-webkit-slider-thumb{
+    transform: scale(1.3);
+  }
+  .ram-slider::-moz-range-thumb{
+    width:12px; height:12px;
+    border:none;
+    border-radius:50%;
+    background: #fff;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--pink) 55%, transparent), 0 4px 10px rgba(0,0,0,0.45);
+    cursor:pointer;
+    transition: transform .15s cubic-bezier(.34,1.6,.6,1);
+  }
+  .ram-slider:active::-moz-range-thumb{ transform: scale(1.3); }
+  .ram-ticks{
+    display:flex;
+    justify-content:space-between;
+    font-size:10px;
+    color:#7a7078;
+    margin-top:6px;
+    padding:0 2px;
+  }
+  .color-row{
+    display:flex;
+    gap:14px;
+  }
+  .color-field{
+    flex:1;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    background: rgba(0,0,0,0.3);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:8px;
+    padding:8px 10px;
+  }
+  .color-field input[type=color]{
+    width:32px; height:32px;
+    border:none;
+    border-radius:6px;
+    background:none;
+    cursor:pointer;
+    padding:0;
+  }
+  .color-field span{ font-size:12px; color:#c9c2c6; }
+
+  .modal-actions{
+    display:flex;
+    gap:10px;
+    margin-top:20px;
+  }
+  .modal-actions button{
+    flex:1;
+    padding:10px;
+    border-radius:8px;
+    border:1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.06);
+    color:#f1f1f1;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .modal-actions button.primary{
+    background: linear-gradient(90deg, var(--pink), var(--pink-soft));
+    color:#2a0517;
+    border:none;
+  }
+  .modal-actions button:hover{ filter:brightness(1.1); }
+
+  .reset-theme-btn{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    width:100%;
+    margin-top:10px;
+    padding:9px;
+    border-radius:8px;
+    border:1px dashed rgba(255,255,255,0.18);
+    background:none;
+    color:#a89aa2;
+    font-size:12px;
+    cursor:pointer;
+    transition: all .2s ease;
+  }
+  .reset-theme-btn:hover{
+    color:#f1f1f1;
+    border-color: rgba(255,255,255,0.4);
+    background: rgba(255,255,255,0.04);
+  }
+  .reset-theme-btn svg{ width:13px; height:13px; fill:currentColor; }
+  .logo-text{
+    font-family: 'Consolas', monospace;
+    font-size:22px;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    font-weight:bold;
+    text-shadow: 0 0 12px rgba(255,45,120,0.5);
+  }
+  .logo-text span{ color: var(--pink-soft); }
+  .logo-sub{
+    font-size:11px;
+    letter-spacing:1px;
+    color:#a89aa2;
+    margin-top:2px;
+  }
+
+  .social{
+    display:flex;
+    gap:12px;
+  }
+  .social a{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:9px 16px;
+    border-radius:10px;
+    background: rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.12);
+    color:#f1f1f1;
+    text-decoration:none;
+    font-size:13px;
+    font-weight:600;
+    backdrop-filter: blur(6px);
+    transition: all .25s ease;
+  }
+  .social a:hover{
+    transform: translateY(-2px);
+    border-color: rgba(255,255,255,0.35);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+  }
+  .social .tg:hover{ background: rgba(42,146,229,0.25); }
+  .social .dc:hover{ background: rgba(88,101,242,0.25); }
+  .social svg{ width:16px; height:16px; fill:currentColor; }
+
+  main{ flex:1; }
+
+  footer{
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    gap:20px;
+  }
+
+  .skin-box{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:10px;
+    background: var(--panel-bg);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:16px;
+    padding:18px 22px;
+    backdrop-filter: blur(14px);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+    min-width:150px;
+  }
+
+  .skin-head{
+    position:relative;
+    width:84px;
+    height:84px;
+    border-radius:10px;
+    background: rgba(0,0,0,0.35);
+    border:1px solid rgba(255,255,255,0.1);
+    overflow:hidden;
+    image-rendering: pixelated;
+  }
+  .skin-head .layer{
+    position:absolute;
+    top:0; left:0;
+    image-rendering: pixelated;
+  }
+
+  .skin-name{
+    font-size:13px;
+    font-weight:600;
+    letter-spacing:0.5px;
+    color:#f1f1f1;
+    max-width:140px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+
+  .skin-upload-btn{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    border:1px solid rgba(255,255,255,0.16);
+    background: rgba(255,45,120,0.12);
+    color:#f1f1f1;
+    padding:10px 14px;
+    border-radius:10px;
+    font-size:12px;
+    font-weight:600;
+    cursor:pointer;
+    white-space:nowrap;
+    transition: all .2s ease;
+  }
+  .skin-upload-btn:hover{
+    background: rgba(255,45,120,0.28);
+    border-color: rgba(255,45,120,0.5);
+  }
+
+  .skin-clear{
+    font-size:11px;
+    color:#a89aa2;
+    background:none;
+    border:none;
+    cursor:pointer;
+    text-decoration:underline;
+  }
+  .skin-clear:hover{ color:#f1f1f1; }
+
+  .panel{
+    width:100%;
+    max-width:460px;
+    background: var(--panel-bg);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:16px;
+    padding:20px 24px;
+    backdrop-filter: blur(14px);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+  }
+
+  .row{
+    display:flex;
+    gap:12px;
+    margin-bottom:14px;
+  }
+
+  .field{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .field label{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:#a89aa2;
+  }
+  .field input, .field select{
+    background: rgba(0,0,0,0.4);
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:8px;
+    padding:10px 12px;
+    color:#fff;
+    font-size:14px;
+    outline:none;
+    transition: border-color .2s ease, box-shadow .2s ease;
+  }
+  .field input:focus, .field select:focus{
+    border-color: var(--pink);
+    box-shadow: 0 0 0 3px rgba(255,45,120,0.2);
+  }
+
+  /* ---------- выбор офлайн-аккаунта (как список в Legacy Launcher) ---------- */
+  .account-select{ position:relative; }
+  .account-current{
+    width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    background: rgba(0,0,0,0.4);
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:8px;
+    padding:10px 12px;
+    color:#fff;
+    font-size:14px;
+    cursor:pointer;
+    text-align:left;
+    transition: border-color .2s ease, box-shadow .2s ease;
+  }
+  .account-current:hover{ border-color: rgba(255,255,255,0.25); }
+  .account-current.open, .account-current:focus{
+    border-color: var(--pink);
+    box-shadow: 0 0 0 3px rgba(255,45,120,0.2);
+  }
+  .account-current span{
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    color: inherit;
+  }
+  .account-current.placeholder span{ color:#7a7078; }
+  .account-caret{ width:14px; height:14px; fill:#a89aa2; flex-shrink:0; transition: transform .2s ease; }
+  .account-current.open .account-caret{ transform: rotate(180deg); }
+
+  .account-dropdown{
+    position:absolute;
+    bottom:calc(100% + 6px);
+    left:0; right:0;
+    background: rgba(16,10,14,0.97);
+    border:1px solid rgba(255,255,255,0.14);
+    border-radius:10px;
+    padding:6px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.6);
+    z-index:40;
+    max-height:220px;
+    display:flex;
+    flex-direction:column;
+  }
+  .account-dropdown.hidden{ display:none; }
+  .account-list{
+    overflow-y:auto;
+    max-height:150px;
+  }
+  .account-list-empty{
+    font-size:12px;
+    color:#7a7078;
+    padding:8px 6px;
+    text-align:center;
+  }
+  .account-item{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    padding:8px 8px;
+    border-radius:7px;
+    cursor:pointer;
+    font-size:13px;
+    color:#e8e2e5;
+  }
+  .account-item:hover{ background: rgba(255,255,255,0.06); }
+  .account-item.active{
+    background: rgba(255,45,120,0.16);
+    color:#fff;
+    font-weight:600;
+  }
+  .account-item .account-item-name{
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .account-item .account-item-remove{
+    flex-shrink:0;
+    width:20px; height:20px;
+    border:none;
+    border-radius:5px;
+    background:none;
+    color:#a89aa2;
+    cursor:pointer;
+    font-size:14px;
+    line-height:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .account-item .account-item-remove:hover{
+    background: rgba(255,45,120,0.3);
+    color:#fff;
+  }
+  .account-add-row{
+    display:flex;
+    gap:6px;
+    margin-top:6px;
+    padding-top:6px;
+    border-top:1px solid rgba(255,255,255,0.08);
+  }
+  .account-add-row input{
+    flex:1;
+    background: rgba(0,0,0,0.4);
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:7px;
+    padding:7px 9px;
+    color:#fff;
+    font-size:13px;
+    outline:none;
+    min-width:0;
+  }
+  .account-add-row input:focus{
+    border-color: var(--pink);
+  }
+  .account-add-row button{
+    flex-shrink:0;
+    width:30px;
+    border:none;
+    border-radius:7px;
+    background: linear-gradient(90deg, var(--pink), var(--pink-soft));
+    color:#2a0517;
+    font-weight:bold;
+    font-size:15px;
+    cursor:pointer;
+  }
+  .account-add-row button:hover{ filter:brightness(1.1); }
+  .account-error{
+    font-size:11px;
+    color:#e07a9a;
+    padding:4px 6px 0;
+    min-height:0;
+  }
+
+  .ver-filter-toggle{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    margin-top:6px;
+    font-size:11px;
+    color:#a89aa2;
+    text-transform:none;
+    letter-spacing:normal;
+    cursor:pointer;
+    user-select:none;
+  }
+  .ver-filter-toggle input[type=checkbox]{
+    width:13px; height:13px;
+    accent-color: var(--pink);
+    cursor:pointer;
+  }
+
+  .play-row{
+    display:flex;
+    align-items:center;
+    gap:14px;
+  }
+
+  .play-btn{
+    flex:1;
+    position:relative;
+    overflow:hidden;
+    border:none;
+    border-radius:10px;
+    padding:16px;
+    font-size:17px;
+    font-weight:bold;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    color:#2a0517;
+    cursor:pointer;
+    background: linear-gradient(90deg, var(--pink), var(--pink-soft));
+    box-shadow: 0 8px 24px rgba(255,45,120,0.35);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .play-btn:hover{
+    transform: translateY(-2px);
+    box-shadow: 0 12px 30px rgba(255,45,120,0.5);
+  }
+  .play-btn:active{ transform: translateY(0px) scale(0.98); }
+
+  .play-btn .shine{
+    position:absolute;
+    top:0; left:-60%;
+    width:40%; height:100%;
+    background: linear-gradient(120deg, transparent, rgba(255,255,255,0.5), transparent);
+    transform: skewX(-20deg);
+    animation: shine 3.2s ease-in-out infinite;
+  }
+  @keyframes shine{
+    0%{ left:-60%; }
+    45%{ left:130%; }
+    100%{ left:130%; }
+  }
+
+  .status{
+    text-align:center;
+    font-size:12px;
+    color:#9c8f96;
+    margin-top:10px;
+    height:16px;
+  }
+
+  .progress-bar{
+    width:100%;
+    height:5px;
+    border-radius:999px;
+    background: rgba(255,255,255,0.08);
+    overflow:hidden;
+    margin-top:8px;
+  }
+  .progress-bar.hidden{ display:none; }
+  .progress-fill{
+    height:100%;
+    width:0%;
+    background: linear-gradient(90deg, var(--pink), var(--pink-soft));
+    transition: width .25s ease;
+  }
+
+  .log-toggle{
+    display:block;
+    margin:8px auto 0;
+    background:none;
+    border:none;
+    color:#7a7078;
+    font-size:11px;
+    text-decoration:underline;
+    cursor:pointer;
+  }
+  .log-toggle.hidden{ display:none; }
+
+  .log-panel{
+    margin-top:8px;
+    max-height:120px;
+    overflow-y:auto;
+    background: rgba(0,0,0,0.4);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:8px;
+    padding:8px 10px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size:11px;
+    line-height:1.5;
+    color:#c9c0c5;
+    white-space:pre-wrap;
+    word-break:break-all;
+  }
+  .log-panel.hidden{ display:none; }
+
+  .java-path-row{
+    display:flex;
+    gap:8px;
+  }
+  .java-path-row input{
+    flex:1;
+    background: rgba(0,0,0,0.4);
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:8px;
+    padding:10px 12px;
+    color:#fff;
+    font-size:13px;
+  }
+  .java-path-row button{
+    width:40px;
+    border:1px solid rgba(255,255,255,0.12);
+    border-radius:8px;
+    background: rgba(255,255,255,0.06);
+    color:#e8e8ee;
+    cursor:pointer;
+  }
+  .java-path-row button:hover{ background: rgba(255,255,255,0.14); }
+
+  ::selection{ background: rgba(255,45,120,0.4); }
+</style>
+</head>
+<body>
+
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+  <div class="noise"></div>
+  <canvas id="fx"></canvas>
+
+  <div class="titlebar">
+    <div class="side">
+      <button id="settingsBtn" title="Настройки">
+        <svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 .1-1 7.6 7.6 0 0 0-.1-1l2.1-1.6a.5.5 0 0 0 .1-.6l-2-3.5a.5.5 0 0 0-.6-.2l-2.5 1a7.5 7.5 0 0 0-1.7-1l-.4-2.6a.5.5 0 0 0-.5-.4h-4a.5.5 0 0 0-.5.4l-.4 2.6a7.5 7.5 0 0 0-1.7 1l-2.5-1a.5.5 0 0 0-.6.2l-2 3.5a.5.5 0 0 0 .1.6L4.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6a.5.5 0 0 0-.1.6l2 3.5a.5.5 0 0 0 .6.2l2.5-1a7.5 7.5 0 0 0 1.7 1l.4 2.6a.5.5 0 0 0 .5.4h4a.5.5 0 0 0 .5-.4l.4-2.6a7.5 7.5 0 0 0 1.7-1l2.5 1a.5.5 0 0 0 .6-.2l2-3.5a.5.5 0 0 0-.1-.6L19.4 13Zm-7.4 2.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>
+      </button>
+      <button id="openFolderBtn" title="Открыть папку игры (.minecraft)">
+        <svg viewBox="0 0 24 24"><path d="M10 4H3.5A1.5 1.5 0 0 0 2 5.5v13A1.5 1.5 0 0 0 3.5 20h17a1.5 1.5 0 0 0 1.5-1.5V8a1.5 1.5 0 0 0-1.5-1.5H12L10 4Z"/></svg>
+      </button>
+    </div>
+    <div class="side">
+      <button id="minBtn" title="Свернуть">&#8211;</button>
+      <button id="closeBtn" class="close" title="Закрыть">&times;</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <header>
+      <div class="logo">
+        <div class="logo-cube" id="logoCube"></div>
+        <div>
+          <div class="logo-text">SOLA<span>LAUNCHER</span></div>
+          <div class="logo-sub">твой мир начинается здесь</div>
+        </div>
+      </div>
+      <div class="social">
+        <a class="tg" href="https://t.me/opuzj" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24"><path d="M21.9 3.5c-.3-.2-.7-.3-1.1-.1L2.4 10.7c-.5.2-.8.6-.8 1.1 0 .5.4.9.9 1l4.7 1.5 1.8 5.7c.1.4.5.7 1 .7.3 0 .6-.1.8-.4l2.6-3 4.8 3.6c.2.2.5.3.8.3.2 0 .4 0 .6-.1.4-.2.6-.5.7-.9L22.7 4.6c.1-.4-.1-.8-.4-1.1zM9 14.6l-.4 3-1.3-4 9.8-6.3-8.1 7.3z"/></svg>
+          Telegram
+        </a>
+        <a class="dc" href="https://discord.gg/dRPf73jRTU" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24"><path d="M20.3 5.4A17.5 17.5 0 0 0 15.9 4c-.2.4-.5.9-.6 1.3a16 16 0 0 0-4.6 0c-.2-.4-.4-.9-.6-1.3-1.6.3-3 .8-4.4 1.4C2.9 9 2.2 12.6 2.5 16.2c1.9 1.4 3.7 2.2 5.5 2.8.4-.6.8-1.2 1.1-1.9-.6-.2-1.2-.5-1.7-.9.1-.1.3-.2.4-.3 3.3 1.5 6.9 1.5 10.2 0 .1.1.3.2.4.3-.5.4-1.1.7-1.7.9.3.7.7 1.3 1.1 1.9 1.8-.6 3.6-1.4 5.5-2.8.4-4.2-.7-7.8-2.6-10.8ZM9.7 14c-.8 0-1.5-.8-1.5-1.7 0-1 .6-1.7 1.5-1.7s1.5.8 1.5 1.7c0 1-.6 1.7-1.5 1.7Zm5.6 0c-.8 0-1.5-.8-1.5-1.7 0-1 .6-1.7 1.5-1.7s1.5.8 1.4 1.7c0 1-.6 1.7-1.4 1.7Z"/></svg>
+          Discord
+        </a>
+      </div>
+    </header>
+
+    <main></main>
+
+    <footer>
+      <div class="panel">
+        <div class="row">
+          <div class="field account-select" style="flex:1.4" id="accountSelect">
+            <label for="accountBtn">Аккаунт</label>
+            <button type="button" class="account-current placeholder" id="accountBtn">
+              <span id="accountCurrentName">нет аккаунтов</span>
+              <svg class="account-caret" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg>
+            </button>
+            <div class="account-dropdown hidden" id="accountDropdown">
+              <div class="account-list" id="accountList"></div>
+              <div class="account-add-row">
+                <input type="text" id="accountNewNick" placeholder="новый ник" maxlength="16">
+                <button id="accountAddBtn" title="Добавить аккаунт">+</button>
+              </div>
+              <div class="account-error" id="accountError"></div>
+            </div>
+          </div>
+          <div class="field">
+            <label for="ver">Версия</label>
+            <select id="ver">
+              <option>загрузка...</option>
+            </select>
+            <label class="ver-filter-toggle">
+              <input type="checkbox" id="onlyInstalled">
+              только установленные
+            </label>
+          </div>
+        </div>
+
+        <div class="play-row">
+          <button class="play-btn" id="playBtn">
+            <span class="shine"></span>
+            Играть
+          </button>
+        </div>
+        <div class="status" id="status"></div>
+        <div class="progress-bar hidden" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+        <button class="log-toggle hidden" id="logToggle">консоль</button>
+        <div class="log-panel hidden" id="logPanel"></div>
+      </div>
+
+      <div class="skin-box" id="skinBox">
+        <!-- содержимое подставляется скриптом: либо кнопка входа, либо голова + ник -->
+      </div>
+    </footer>
+  </div>
+
+  <div class="modal-overlay hidden" id="settingsModal">
+    <div class="modal">
+      <h2>Настройки лаунчера</h2>
+
+      <div class="field">
+        <label for="ramSlider">Оперативная память (RAM)</label>
+        <div class="ram-slider-row">
+          <input type="range" id="ramSlider" class="ram-slider" min="2" max="16" step="0.1" value="4">
+          <span class="ram-value" id="ramValue">4 GB</span>
+        </div>
+        <div class="ram-ticks"><span>2</span><span>4</span><span>6</span><span>8</span><span>10</span><span>12</span><span>14</span><span>16</span></div>
+      </div>
+
+      <div class="field">
+        <label>Цвет градиента</label>
+        <div class="color-row">
+          <div class="color-field">
+            <input type="color" id="colorPrimary" value="#ff2d78">
+            <span>основной</span>
+          </div>
+          <div class="color-field">
+            <input type="color" id="colorSecondary" value="#8a1f5c">
+            <span>второй</span>
+          </div>
+        </div>
+        <button class="reset-theme-btn" id="resetThemeBtn">
+          <svg viewBox="0 0 24 24"><path d="M17.65 6.35A8 8 0 1 0 19.94 13h-2.02a6 6 0 1 1-1.73-5.66L13 10h7V3l-2.35 3.35Z"/></svg>
+          сбросить тему
+        </button>
+      </div>
+
+      <div class="field">
+        <label for="javaPath">Путь к java (необязательно)</label>
+        <div class="java-path-row">
+          <input type="text" id="javaPath" placeholder="по умолчанию: лаунчер сам скачает нужную Java">
+          <button id="javaPickBtn" title="Выбрать файл">...</button>
+        </div>
+        <div style="font-size:11px;color:#7a7078;margin-top:6px;line-height:1.4;">
+          Если не указать — лаунчер сам определит и скачает версию Java (8/17/21/25),
+          которая нужна выбранной версии Minecraft. Заполняй только если хочешь
+          использовать свою Java.
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="settingsCancel">Отмена</button>
+        <button class="primary" id="settingsSave">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ---------- gradient follows mouse (smoothed) ----------
+  let targetX = 50, targetY = 50, curX = 50, curY = 50;
+  addEventListener('mousemove', e=>{
+    targetX = (e.clientX / window.innerWidth) * 100;
+    targetY = (e.clientY / window.innerHeight) * 100;
+  });
+  function animateGradient(){
+    curX += (targetX - curX) * 0.06;
+    curY += (targetY - curY) * 0.06;
+    document.documentElement.style.setProperty('--mx', curX + '%');
+    document.documentElement.style.setProperty('--my', curY + '%');
+    requestAnimationFrame(animateGradient);
+  }
+  animateGradient();
+
+  // ---------- mouse particle trail ----------
+  const canvas = document.getElementById('fx');
+  const ctx = canvas.getContext('2d');
+  function resize(){ canvas.width = innerWidth; canvas.height = innerHeight; }
+  resize();
+  addEventListener('resize', resize);
+
+  const particles = [];
+  const colors = ['#ff2d78','#ff6ec7','#8a1f5c','#ffffff'];
+
+  addEventListener('mousemove', e=>{
+    for(let i=0;i<2;i++){
+      particles.push({
+        x: e.clientX + (Math.random()-0.5)*6,
+        y: e.clientY + (Math.random()-0.5)*6,
+        size: 3 + Math.random()*4,
+        vy: -0.4 - Math.random()*0.6,
+        vx: (Math.random()-0.5)*0.8,
+        life: 1,
+        color: colors[Math.floor(Math.random()*colors.length)]
+      });
+    }
+    if(particles.length > 240) particles.splice(0, particles.length-240);
+  });
+
+  function spawnBurst(x, y, count){
+    for(let i=0;i<count;i++){
+      const angle = (Math.PI*2 * i)/count + Math.random()*0.5;
+      const speed = 2 + Math.random()*3;
+      particles.push({
+        x, y,
+        size: 3 + Math.random()*5,
+        vx: Math.cos(angle)*speed,
+        vy: Math.sin(angle)*speed,
+        life: 1,
+        color: colors[Math.floor(Math.random()*colors.length)]
+      });
+    }
+  }
+
+  function loop(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    for(let i=particles.length-1;i>=0;i--){
+      const p = particles[i];
+      p.x += p.vx; p.y += p.vy;
+      p.life -= 0.02;
+      if(p.life<=0){ particles.splice(i,1); continue; }
+      ctx.save();
+      ctx.globalAlpha = Math.max(p.life,0);
+      ctx.fillStyle = p.color;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+    requestAnimationFrame(loop);
+  }
+  loop();
+
+  // ---------- window controls ----------
+  if(window.sola){
+    document.getElementById('minBtn').addEventListener('click', ()=> window.sola.minimize());
+    document.getElementById('closeBtn').addEventListener('click', ()=> window.sola.close());
+    document.getElementById('openFolderBtn').addEventListener('click', async ()=>{
+      try{ await window.sola.openGameFolder(); }catch(e){}
+    });
+  }
+
+  // ---------- logo cube: spin + particle burst ----------
+  const logoCube = document.getElementById('logoCube');
+  logoCube.addEventListener('click', ()=>{
+    logoCube.classList.remove('spin');
+    void logoCube.offsetWidth; // restart animation
+    logoCube.classList.add('spin');
+
+    const rect = logoCube.getBoundingClientRect();
+    spawnBurst(rect.left + rect.width/2, rect.top + rect.height/2, 22);
+  });
+
+  // ---------- remember prefs ----------
+  const ver = document.getElementById('ver');
+  const onlyInstalled = document.getElementById('onlyInstalled');
+  const status = document.getElementById('status');
+  const skinBox = document.getElementById('skinBox');
+
+  let currentSettings = { ram: '4 GB', gradientPrimary: '#ff2d78', gradientSecondary: '#8a1f5c' };
+  const DEFAULT_THEME = { gradientPrimary: '#ff2d78', gradientSecondary: '#8a1f5c' };
+  let versionsList = [];
+
+  let localSkin = null; // data URL строки локально выбранного PNG-скина, либо null
+
+  function renderSkinBox(){
+    if(localSkin){
+      const size = 84;
+      const scale = size / 8;
+      skinBox.innerHTML = `
+        <div class="skin-head">
+          <div class="layer" style="width:${scale*64}px;height:${scale*64}px;left:-${scale*8}px;top:-${scale*8}px;background-image:url('${localSkin}');background-repeat:no-repeat;background-size:${scale*64}px auto;"></div>
+          <div class="layer" style="width:${scale*64}px;height:${scale*64}px;left:-${scale*40}px;top:-${scale*8}px;background-image:url('${localSkin}');background-repeat:no-repeat;background-size:${scale*64}px auto;"></div>
+        </div>
+        <div class="skin-name">локальный скин</div>
+        <button class="skin-clear" id="skinClearBtn">убрать</button>
+      `;
+      document.getElementById('skinClearBtn').addEventListener('click', async ()=>{
+        if(window.sola) await window.sola.clearSkin();
+        localSkin = null;
+        renderSkinBox();
+      });
+    } else {
+      skinBox.innerHTML = `
+        <button class="skin-upload-btn" id="skinUploadBtn">Загрузить скин</button>
+      `;
+      document.getElementById('skinUploadBtn').addEventListener('click', async ()=>{
+        if(!window.sola) return;
+        try{
+          const dataUrl = await window.sola.pickSkin();
+          if(dataUrl){
+            localSkin = dataUrl;
+            status.textContent = 'скин загружен';
+            status.style.color = '#9c8f96';
+            renderSkinBox();
+          }
+        }catch(e){
+          status.textContent = 'не удалось загрузить скин';
+          status.style.color = '#e07a9a';
+        }
+      });
+    }
+  }
+
+  try{
+    const saved = JSON.parse(localStorage.getItem('launcherPrefs') || '{}');
+    if(saved.ver) ver.value = saved.ver;
+    if(saved.onlyInstalled) onlyInstalled.checked = true;
+  }catch(e){}
+
+  // ---------- фильтр версий: "все" / "только установленные" ----------
+  // Версии, найденные локально в папке versions, всегда помечены downloaded:true
+  // на стороне main.js (даже если их нет в списке релизов GitHub), поэтому
+  // фильтр "установленные" их не потеряет.
+  function renderVersionOptions(){
+    const prevValue = ver.value;
+    const filtered = onlyInstalled.checked ? versionsList.filter(v => v.downloaded) : versionsList;
+    if(filtered.length === 0){
+      ver.innerHTML = onlyInstalled.checked
+        ? '<option value="">нет установленных версий</option>'
+        : '<option value="">нет доступных версий</option>';
+      return;
+    }
+    ver.innerHTML = filtered.map(v => `<option value="${v.version}">${v.version}${v.downloaded ? ' ✓' : ''}</option>`).join('');
+    if(prevValue && filtered.some(v => v.version === prevValue)){
+      ver.value = prevValue;
+    }
+  }
+  onlyInstalled.addEventListener('change', ()=>{
+    renderVersionOptions();
+    savePrefs();
+  });
+
+  function applyGradientColors(primary, secondary){
+    document.documentElement.style.setProperty('--pink', primary);
+    document.documentElement.style.setProperty('--violet', secondary);
+  }
+
+  (async () => {
+    if(window.sola){
+      localSkin = await window.sola.getSkin();
+      renderSkinBox();
+
+      currentSettings = await window.sola.getSettings();
+      applyGradientColors(currentSettings.gradientPrimary, currentSettings.gradientSecondary);
+      ramSlider.value = parseInt(currentSettings.ram, 10) || 4;
+      updateRamFill();
+
+      status.textContent = 'загружаю список версий...';
+      status.style.color = '#9c8f96';
+      try{
+        versionsList = await window.sola.listVersions();
+        renderVersionOptions();
+        try{
+          const saved = JSON.parse(localStorage.getItem('launcherPrefs') || '{}');
+          if(saved.ver && versionsList.some(v => v.version === saved.ver)) ver.value = saved.ver;
+        }catch(e){}
+        status.textContent = '';
+      }catch(e){
+        status.textContent = 'не удалось загрузить список версий';
+        status.style.color = '#e07a9a';
+      }
+    }
+    renderSkinBox();
+  })();
+
+  function savePrefs(){
+    try{
+      localStorage.setItem('launcherPrefs', JSON.stringify({
+        ver: ver.value, onlyInstalled: onlyInstalled.checked
+      }));
+    }catch(e){}
+  }
+  ver.addEventListener('change', savePrefs);
+
+  // ---------- аккаунты (офлайн-ники), список как в Legacy Launcher ----------
+  const accountBtn = document.getElementById('accountBtn');
+  const accountCurrentName = document.getElementById('accountCurrentName');
+  const accountDropdown = document.getElementById('accountDropdown');
+  const accountList = document.getElementById('accountList');
+  const accountNewNick = document.getElementById('accountNewNick');
+  const accountAddBtn = document.getElementById('accountAddBtn');
+  const accountError = document.getElementById('accountError');
+
+  let accounts = [];
+  let activeAccountId = null;
+
+  function activeAccount(){
+    return accounts.find(a => a.id === activeAccountId) || null;
+  }
+
+  function renderAccountUI(){
+    const active = activeAccount();
+    accountCurrentName.textContent = active ? active.nickname : 'нет аккаунтов';
+    accountBtn.classList.toggle('placeholder', !active);
+
+    if(accounts.length === 0){
+      accountList.innerHTML = '<div class="account-list-empty">добавь ник ниже</div>';
+      return;
+    }
+    accountList.innerHTML = accounts.map(a => `
+      <div class="account-item ${a.id === activeAccountId ? 'active' : ''}" data-id="${a.id}">
+        <span class="account-item-name">${a.nickname}</span>
+        <button class="account-item-remove" data-remove-id="${a.id}" title="Удалить">&times;</button>
+      </div>
+    `).join('');
+
+    accountList.querySelectorAll('.account-item').forEach(el=>{
+      el.addEventListener('click', async (e)=>{
+        if(e.target.closest('.account-item-remove')) return;
+        const id = el.getAttribute('data-id');
+        if(!window.sola) return;
+        const data = await window.sola.setActiveAccount(id);
+        accounts = data.accounts;
+        activeAccountId = data.activeId;
+        renderAccountUI();
+        closeAccountDropdown();
+      });
+    });
+    accountList.querySelectorAll('.account-item-remove').forEach(btn=>{
+      btn.addEventListener('click', async (e)=>{
+        e.stopPropagation();
+        const id = btn.getAttribute('data-remove-id');
+        if(!window.sola) return;
+        const data = await window.sola.removeAccount(id);
+        accounts = data.accounts;
+        activeAccountId = data.activeId;
+        renderAccountUI();
+      });
+    });
+  }
+
+  function openAccountDropdown(){
+    accountDropdown.classList.remove('hidden');
+    accountBtn.classList.add('open');
+  }
+  function closeAccountDropdown(){
+    accountDropdown.classList.add('hidden');
+    accountBtn.classList.remove('open');
+    accountError.textContent = '';
+  }
+  accountBtn.addEventListener('click', ()=>{
+    if(accountDropdown.classList.contains('hidden')) openAccountDropdown();
+    else closeAccountDropdown();
+  });
+  document.addEventListener('click', (e)=>{
+    if(!document.getElementById('accountSelect').contains(e.target)) closeAccountDropdown();
+  });
+
+  async function addAccountFromInput(){
+    const value = accountNewNick.value.trim();
+    if(!value){ accountError.textContent = 'введи ник'; return; }
+    if(!window.sola) return;
+    try{
+      const data = await window.sola.addAccount(value);
+      accounts = data.accounts;
+      activeAccountId = data.activeId;
+      accountNewNick.value = '';
+      accountError.textContent = '';
+      renderAccountUI();
+    }catch(e){
+      accountError.textContent = e.message.replace(/^Error invoking remote method[^:]*:\s*/, '').replace(/^Error:\s*/, '');
+    }
+  }
+  accountAddBtn.addEventListener('click', addAccountFromInput);
+  accountNewNick.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter') addAccountFromInput();
+  });
+
+  (async () => {
+    if(window.sola){
+      const data = await window.sola.listAccounts();
+      accounts = data.accounts;
+      activeAccountId = data.activeId;
+      renderAccountUI();
+    }
+  })();
+
+  // ---------- settings modal ----------
+  const settingsModal = document.getElementById('settingsModal');
+  const ramSlider = document.getElementById('ramSlider');
+  const ramValue = document.getElementById('ramValue');
+  const colorPrimary = document.getElementById('colorPrimary');
+  const colorSecondary = document.getElementById('colorSecondary');
+
+  function updateRamFill(){
+    const min = Number(ramSlider.min), max = Number(ramSlider.max);
+    const pct = ((Number(ramSlider.value) - min) / (max - min)) * 100;
+    ramSlider.style.setProperty('--fill', pct + '%');
+    ramValue.textContent = `${Math.round(Number(ramSlider.value))} GB`;
+  }
+  ramSlider.addEventListener('input', updateRamFill);
+
+  const javaPathInput = document.getElementById('javaPath');
+
+  document.getElementById('settingsBtn').addEventListener('click', ()=>{
+    ramSlider.value = parseInt(currentSettings.ram, 10) || 4;
+    updateRamFill();
+    colorPrimary.value = currentSettings.gradientPrimary;
+    colorSecondary.value = currentSettings.gradientSecondary;
+    javaPathInput.value = currentSettings.javaPath || '';
+    settingsModal.classList.remove('hidden');
+  });
+  document.getElementById('settingsCancel').addEventListener('click', ()=>{
+    settingsModal.classList.add('hidden');
+  });
+  document.getElementById('javaPickBtn').addEventListener('click', async ()=>{
+    if(!window.sola) return;
+    const picked = await window.sola.pickJava();
+    if(picked) javaPathInput.value = picked;
+  });
+  document.getElementById('settingsSave').addEventListener('click', async ()=>{
+    const updated = {
+      ram: `${Math.round(Number(ramSlider.value))} GB`,
+      gradientPrimary: colorPrimary.value,
+      gradientSecondary: colorSecondary.value,
+      javaPath: javaPathInput.value.trim()
+    };
+    if(window.sola){
+      currentSettings = await window.sola.saveSettings(updated);
+    } else {
+      currentSettings = updated;
+    }
+    applyGradientColors(currentSettings.gradientPrimary, currentSettings.gradientSecondary);
+    settingsModal.classList.add('hidden');
+  });
+  document.getElementById('resetThemeBtn').addEventListener('click', ()=>{
+    colorPrimary.value = DEFAULT_THEME.gradientPrimary;
+    colorSecondary.value = DEFAULT_THEME.gradientSecondary;
+    applyGradientColors(DEFAULT_THEME.gradientPrimary, DEFAULT_THEME.gradientSecondary);
+  });
+
+  // ---------- play button ----------
+  const playBtn = document.getElementById('playBtn');
+  const progressBar = document.getElementById('progressBar');
+  const progressFill = document.getElementById('progressFill');
+  const logToggle = document.getElementById('logToggle');
+  const logPanel = document.getElementById('logPanel');
+  let logOpen = false;
+
+  logToggle.addEventListener('click', ()=>{
+    logOpen = !logOpen;
+    logPanel.classList.toggle('hidden', !logOpen);
+  });
+
+  function appendLog(line){
+    logPanel.textContent += line.endsWith('\n') ? line : line + '\n';
+    logPanel.scrollTop = logPanel.scrollHeight;
+  }
+
+  function setBusy(busy){
+    playBtn.disabled = busy;
+    playBtn.style.opacity = busy ? 0.6 : 1;
+    playBtn.style.pointerEvents = busy ? 'none' : 'auto';
+  }
+
+  if(window.sola){
+    window.sola.onLaunchProgress((payload)=>{
+      status.style.color = payload.stage === 'error' ? '#e07a9a' : '#9c8f96';
+      status.textContent = payload.message || '';
+
+      if(typeof payload.percent === 'number'){
+        progressBar.classList.remove('hidden');
+        progressFill.style.width = Math.round(payload.percent * 100) + '%';
+      }
+      if(payload.stage === 'running'){
+        progressBar.classList.add('hidden');
+        logToggle.classList.remove('hidden');
+      }
+      if(payload.stage === 'closed' || payload.stage === 'error'){
+        progressBar.classList.add('hidden');
+        setBusy(false);
+      }
+    });
+    window.sola.onLaunchLog((line)=>{
+      appendLog(line);
+      logToggle.classList.remove('hidden');
+    });
+  }
+
+  playBtn.addEventListener('click', async ()=>{
+    const account = activeAccount();
+    if(!account){
+      status.textContent = 'выбери или добавь аккаунт';
+      status.style.color = '#e07a9a';
+      openAccountDropdown();
+      accountNewNick.focus();
+      return;
+    }
+    savePrefs();
+    status.style.color = '#9c8f96';
+    logPanel.textContent = '';
+
+    if(window.sola){
+      const versionInfo = versionsList.find(v => v.version === ver.value);
+      if(!versionInfo){
+        status.textContent = 'версия не найдена';
+        status.style.color = '#e07a9a';
+        return;
+      }
+
+      setBusy(true);
+      try{
+        if(!versionInfo.downloaded){
+          status.textContent = `скачиваю ${ver.value}...`;
+          await window.sola.downloadVersion({ version: versionInfo.version, clientUrl: versionInfo.clientUrl });
+          versionInfo.downloaded = true;
+        }
+
+        status.textContent = `подготовка ${ver.value}...`;
+        const res = await window.sola.launchGame({ nickname: account.nickname, version: ver.value, ram: currentSettings.ram });
+        status.textContent = res.message;
+        if(!res.ok){
+          status.style.color = '#e07a9a';
+          setBusy(false);
+        }
+        // если ok — setBusy(false) произойдёт по событию launch:progress со stage 'closed'/'error'
+      }catch(e){
+        status.textContent = `ошибка: ${e.message}`;
+        status.style.color = '#e07a9a';
+        setBusy(false);
+      }
+    }
+  });
+</script>
+</body>
+</html>

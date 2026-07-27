@@ -1,0 +1,36 @@
+{
+  "name": "sola-launcher",
+  "version": "1.0.0",
+  "description": "SolaLauncher - кастомный лаунчер Minecraft",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "adm-zip": "^0.5.10",
+    "discord-rpc": "^4.0.1"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.sola.launcher",
+    "productName": "SolaLauncher",
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "lib/**/*",
+      "node_modules/**/*"
+    ],
+    "win": { "target": "nsis" },
+    "mac": { "target": "dmg" },
+    "linux": { "target": "AppImage" }
+  }
+}
